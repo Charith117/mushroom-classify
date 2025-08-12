@@ -14,12 +14,12 @@ import buttonImage from "@/assets/button.jpg";
 import portobelloImage from "@/assets/portobello.jpg";
 
 interface PredictionResult {
-  mushroomType: {
+  mushroomType?: {
     common: string;
     scientific: string;
   };
-  confidence: number;
-  classId: number;
+  confidence?: number;
+  classId?: number;
   features?: {
     colorMean: [number, number, number];
     textureFeatures: {
@@ -49,7 +49,10 @@ const Index = () => {
     if (file) {
       const reader = new FileReader();
       reader.onload = (e) => {
-        setUploadedImage(e.target?.result as string);
+        const dataURL = e.target?.result as string;
+        // Extract just the base64 string from the data URL
+        const base64String = dataURL.split(',')[1];
+        setUploadedImage(base64String);
       };
       reader.readAsDataURL(file);
     }
@@ -72,8 +75,12 @@ const Index = () => {
     setIsAnalyzing(true);
     
     try {
+      // Debug: Log what we're sending
+      console.log('Image data length:', uploadedImage.length);
+      console.log('Image data preview:', uploadedImage.substring(0, 100) + '...');
+      
       // Call your ML backend API
-      const response = await fetch('http://localhost:5000/predict', {
+      const response = await fetch('http://localhost:8000/predict', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -83,11 +90,32 @@ const Index = () => {
         })
       });
 
+      console.log('Response status:', response.status);
+      console.log('Response headers:', response.headers);
+
       if (!response.ok) {
-        throw new Error('Failed to analyze image');
+        const errorText = await response.text();
+        console.error('Error response:', errorText);
+        throw new Error(`Failed to analyze image: ${response.status} - ${errorText}`);
       }
 
       const result = await response.json();
+      
+      // Check if the response contains an error
+      if (result.error) {
+        // Handle error responses from the backend
+        toast({
+          title: result.error,
+          description: result.message || result.suggestion || "Please try with a different image.",
+          variant: "destructive",
+        });
+        return;
+      }
+      
+      // Check if required fields exist
+      if (!result.mushroomType || !result.confidence || result.classId === undefined) {
+        throw new Error('Invalid response format from server');
+      }
       
       const predictionResult: PredictionResult = {
         mushroomType: result.mushroomType,
@@ -101,7 +129,7 @@ const Index = () => {
       
       toast({
         title: "Analysis Complete!",
-        description: `Identified as ${predictionResult.mushroomType.common} with ${predictionResult.confidence}% confidence.`,
+        description: `Identified as ${predictionResult.mushroomType?.common} with ${predictionResult.confidence}% confidence.`,
       });
       
     } catch (error) {
@@ -253,15 +281,19 @@ const Index = () => {
               {prediction ? (
                 <div className="space-y-6">
                   <div className="text-center p-4 bg-accent/10 rounded-lg dark:bg-slate-700/50">
-                    <h4 className="text-xl font-bold text-foreground">{prediction.mushroomType.common}</h4>
-                    <p className="text-sm text-muted-foreground italic mb-2">{prediction.mushroomType.scientific}</p>
+                    <h4 className="text-xl font-bold text-foreground">
+                      {prediction.mushroomType?.common || 'Unknown Mushroom'}
+                    </h4>
+                    <p className="text-sm text-muted-foreground italic mb-2">
+                      {prediction.mushroomType?.scientific || 'Scientific name not available'}
+                    </p>
                     <p className="text-sm text-muted-foreground">
-                      Confidence: {prediction.confidence}% | Class ID: {prediction.classId}
+                      Confidence: {prediction.confidence || 'N/A'}% | Class ID: {prediction.classId || 'N/A'}
                     </p>
                     {prediction.features && (
                       <div className="mt-2 text-xs text-muted-foreground">
-                        <p>RGB: ({prediction.features.colorMean.map(v => v.toFixed(1)).join(', ')})</p>
-                        <p>Texture Entropy: {prediction.features.textureFeatures.entropy.toFixed(3)}</p>
+                        <p>RGB: ({prediction.features.colorMean?.map(v => v.toFixed(1)).join(', ') || 'N/A'})</p>
+                        <p>Texture Entropy: {prediction.features.textureFeatures?.entropy?.toFixed(3) || 'N/A'}</p>
                       </div>
                     )}
                   </div>
@@ -286,24 +318,24 @@ const Index = () => {
                           <tbody>
                             <tr>
                               <td className="border border-border p-2 font-medium dark:border-slate-600">Spawn Run</td>
-                              <td className="border border-border p-2 dark:border-slate-600">{prediction.growingParameters.spawnRun.temperature}</td>
-                              <td className="border border-border p-2 dark:border-slate-600">{prediction.growingParameters.spawnRun.humidity}</td>
-                              <td className="border border-border p-2 dark:border-slate-600">{prediction.growingParameters.spawnRun.co2}</td>
-                              <td className="border border-border p-2 dark:border-slate-600">{prediction.growingParameters.spawnRun.light}</td>
+                              <td className="border border-border p-2 dark:border-slate-600">{prediction.growingParameters?.spawnRun?.temperature || 'N/A'}</td>
+                              <td className="border border-border p-2 dark:border-slate-600">{prediction.growingParameters?.spawnRun?.humidity || 'N/A'}</td>
+                              <td className="border border-border p-2 dark:border-slate-600">{prediction.growingParameters?.spawnRun?.co2 || 'N/A'}</td>
+                              <td className="border border-border p-2 dark:border-slate-600">{prediction.growingParameters?.spawnRun?.light || 'N/A'}</td>
                             </tr>
                             <tr className="bg-accent/5 dark:bg-slate-700/30">
                               <td className="border border-border p-2 font-medium dark:border-slate-600">Primordia Formation</td>
-                              <td className="border border-border p-2 dark:border-slate-600">{prediction.growingParameters.primordiaFormation.temperature}</td>
-                              <td className="border border-border p-2 dark:border-slate-600">{prediction.growingParameters.primordiaFormation.humidity}</td>
-                              <td className="border border-border p-2 dark:border-slate-600">{prediction.growingParameters.primordiaFormation.co2}</td>
-                              <td className="border border-border p-2 dark:border-slate-600">{prediction.growingParameters.primordiaFormation.light}</td>
+                              <td className="border border-border p-2 dark:border-slate-600">{prediction.growingParameters?.primordiaFormation?.temperature || 'N/A'}</td>
+                              <td className="border border-border p-2 dark:border-slate-600">{prediction.growingParameters?.primordiaFormation?.humidity || 'N/A'}</td>
+                              <td className="border border-border p-2 dark:border-slate-600">{prediction.growingParameters?.primordiaFormation?.co2 || 'N/A'}</td>
+                              <td className="border border-border p-2 dark:border-slate-600">{prediction.growingParameters?.primordiaFormation?.light || 'N/A'}</td>
                             </tr>
                             <tr>
                               <td className="border border-border p-2 font-medium dark:border-slate-600">Fruiting Body Formation</td>
-                              <td className="border border-border p-2 dark:border-slate-600">{prediction.growingParameters.fruitingBodyFormation.temperature}</td>
-                              <td className="border border-border p-2 dark:border-slate-600">{prediction.growingParameters.fruitingBodyFormation.humidity}</td>
-                              <td className="border border-border p-2 dark:border-slate-600">{prediction.growingParameters.fruitingBodyFormation.co2}</td>
-                              <td className="border border-border p-2 dark:border-slate-600">{prediction.growingParameters.fruitingBodyFormation.light}</td>
+                              <td className="border border-border p-2 dark:border-slate-600">{prediction.growingParameters?.fruitingBodyFormation?.temperature || 'N/A'}</td>
+                              <td className="border border-border p-2 dark:border-slate-600">{prediction.growingParameters?.fruitingBodyFormation?.humidity || 'N/A'}</td>
+                              <td className="border border-border p-2 dark:border-slate-600">{prediction.growingParameters?.fruitingBodyFormation?.co2 || 'N/A'}</td>
+                              <td className="border border-border p-2 dark:border-slate-600">{prediction.growingParameters?.fruitingBodyFormation?.light || 'N/A'}</td>
                             </tr>
                           </tbody>
                         </table>
